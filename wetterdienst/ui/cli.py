@@ -3,14 +3,23 @@
 # Distributed under the MIT License. See LICENSE for more info.
 import json
 import logging
+import pprint
 import sys
+from enum import Enum
 from pprint import pformat
 
+import click
+import cloup
+from cloup import ConstraintMixin
+from cloup.constraints import If, IsSet, RequireExactly, And, mutually_exclusive
 import pandas as pd
+from cloup.constraints.conditions import Predicate
 from docopt import DocoptExit, docopt
 from munch import Munch
 
-from wetterdienst import __appname__, __version__
+from wetterdienst import Kind, Provider, Wetterdienst, __appname__, __version__
+from wetterdienst.core.scalar.export import ExportMixin
+from wetterdienst.exceptions import ProviderError
 from wetterdienst.provider.dwd.forecast import DwdMosmixRequest, DwdMosmixType
 from wetterdienst.provider.dwd.observation import (
     DwdObservationDataset,
@@ -23,6 +32,292 @@ from wetterdienst.provider.eumetnet.opera.sites import OperaRadarSites
 from wetterdienst.util.cli import normalize_options, read_list, setup_logging
 
 log = logging.getLogger(__name__)
+
+
+appname = f"{__appname__} {__version__}"
+
+
+# def output(thing):
+#     for item in thing:
+#         if item:
+#             if hasattr(item, "value"):
+#                 value = item.value
+#             else:
+#                 value = item
+#             print("-", value)
+
+provider_arg = click.argument(
+    "provider",
+    type=click.Choice(list(map(lambda p: p.name, Provider)), case_sensitive=False),
+)
+
+kind_arg = click.argument(
+    "kind", type=click.Choice([Kind.OBSERVATION.name, Kind.FORECAST.name], case_sensitive=False)
+)
+debug_opt = click.option("--debug/--no-debug", default=False)
+
+
+def setup_logging(debug: bool):
+    # Setup logging.
+    log_level = logging.INFO
+
+    if debug:  # pragma: no cover
+        log_level = logging.DEBUG
+
+    log.setLevel(log_level)
+
+
+def get_api(provider: str, kind: str):
+    try:
+        api = Wetterdienst(provider, kind)
+    except ProviderError as e:
+        click.Abort(e.str)
+
+    print(api)
+
+    return api
+
+
+@cloup.group()
+def wetterdienst():
+    pass
+
+
+@wetterdienst.command("restapi")
+@cloup.option("--listen", type=click.STRING, default=None)
+@cloup.option("--reload", type=click.BOOL, default=False)
+@debug_opt
+def restapi(listen: str, reload: bool, debug: bool):
+    setup_logging(debug)
+
+    # Run HTTP service.
+    log.info(f"Starting {appname}")
+    log.info(f"Starting HTTP web service on http://{listen}")
+
+    from wetterdienst.ui.restapi import start_service
+
+    start_service(listen, reload=reload)
+
+    return
+
+
+@wetterdienst.command("explorer")
+@cloup.option("--listen", type=click.STRING, default=None)
+@cloup.option("--reload", type=click.BOOL, default=False)
+@debug_opt
+def explorer(listen: str, reload: bool, debug: bool):
+    setup_logging(debug)
+
+    log.info(f"Starting {appname}")
+    log.info(f"Starting Explorer web service on http://{listen}")
+    from wetterdienst.ui.explorer.app import start_service
+
+    start_service(listen, reload=reload)
+    return
+
+
+@wetterdienst.group()
+def about():
+    pass
+
+
+@about.command()
+@provider_arg
+@kind_arg
+# @click.option("--dataset", type=click.STRING, default=False),
+@cloup.option("--filter", type=click.STRING, default=False)
+@debug_opt
+def coverage(provider, kind, filter_, debug):
+    setup_logging(debug)
+
+    api = get_api(provider=provider, kind=kind)
+
+    # dataset = kwargs.get("dataset")
+    # if dataset:
+    #     dataset = read_list(dataset)
+
+    meta = api.discover(
+        filter_=filter_,
+        # dataset=dataset,
+        flatten=False,
+    )
+
+    print(meta)
+
+    return
+
+
+@about.command()
+@provider_arg
+@kind_arg
+@cloup.option_group(
+    "(DWD only) information from PDF documents",
+    click.option("--dataset", type=click.STRING),
+    click.option("--resolution", type=click.STRING),
+    click.option("--period", type=click.STRING),
+    click.option("--language", type=click.Choice(["en", "de"], case_sensitive=False)),
+    constraint=cloup.constraints.require_all,
+)
+@debug_opt
+def fields(provider, kind, dataset, resolution, period, language, **kwargs):
+    api = get_api(provider, kind)
+
+    if api.provider != Provider.DWD and kwargs.get("fields"):
+        raise click.BadParameter("'fields' command only available for provider 'DWD'")
+
+    metadata = api.describe_fields(
+        dataset=read_list(dataset),  # read_list(kwargs.get("dataset")),
+        resolution=resolution,
+        period=read_list(period),
+        language=language,
+    )
+    output = pformat(dict(metadata))
+    print(output)
+    # elif API.provider == Provider.DWD and fields:
+    #     metadata = DwdObservationRequest.describe_fields(
+    #         dataset=read_list(options.parameter),
+    #         resolution=options.resolution,
+    #         period=read_list(options.period),
+    #         language=options.language,
+    #     )
+    #     output = pformat(dict(metadata))
+    #     print(output)
+    return
+
+
+@wetterdienst.command()
+@provider_arg
+@kind_arg
+@cloup.option_group(
+    "Station id filtering",
+    click.option("--station_id", type=click.STRING),
+    constraint=cloup.constraints.all_or_none
+)
+@cloup.option_group(
+    "Station name filtering",
+    click.option("--name", type=click.STRING),
+    constraint=cloup.constraints.all_or_none
+)
+@cloup.option_group(
+    "Latitude-Longitude rank filtering",
+    cloup.option("--latitude", type=click.FLOAT),
+    cloup.option("--longitude", type=click.FLOAT),
+    cloup.option("--rank", type=click.INT),
+    cloup.option("--distance", type=click.FLOAT),
+    constraint=If(IsSet("latitude") & IsSet("longitude"), then=RequireExactly(3), else_=cloup.constraints.accept_none)
+)
+# @cloup.option("--latitude", type=click.FLOAT)
+# @cloup.option("--longitude", type=click.FLOAT)
+# @cloup.option("--rank", type=click.INT)
+# @cloup.option("--distance", type=click.FLOAT)
+# @cloup.constraint(
+#     If(
+#         IsSet("latitude"), #  & IsSet("longitude"),
+#         then=RequireExactly(3),
+#         else_=cloup.constraints.accept_none),
+#     ["latitude", "longitude", "rank", "distance"]
+# )
+# @cloup.option_group(
+#     "Latitude-Longitude distance filtering",
+#     cloup.option("--latitude", type=click.FLOAT),
+#     cloup.option("--longitude", type=click.FLOAT),
+#     cloup.option("--distance", type=click.FLOAT),
+#     constraint=cloup.constraints.all_or_none
+# )
+@cloup.option_group(
+    "BBOX filtering",
+    click.option("--left", type=click.FLOAT),
+    click.option("--bottom", type=click.FLOAT),
+    click.option("--right", type=click.FLOAT),
+    click.option("--top", type=click.FLOAT),
+    constraint=cloup.constraints.all_or_none
+)
+@cloup.option_group(
+    "SQL filtering",
+    click.option("--sql", type=click.STRING),
+    constraint=cloup.constraints.all_or_none
+)
+@cloup.option("--format", default="json")
+@debug_opt
+def stations(provider, kind, **kwargs):
+    setup_logging(kwargs.get("debug"))
+
+    api = get_api(provider=provider, kind=kind)
+
+    if kwargs.get("station_id"):
+        station_id = kwargs.get("station_id")
+        station_id = station_id.split(",")
+
+        request = api.filter_by_station_id(station_id)
+    elif kwargs.get("name"):
+        name = kwargs.get("name")
+        name = name.split(",")
+
+        request = api.filter_by_name(name)
+    elif kwargs.get("latitude"):
+        If(
+            IsSet("latitude") & IsSet("longitude"),
+            then=RequireExactly(3),
+            else_=cloup.constraints.accept_none)
+
+        if kwargs.get("rank"):
+            request = api.filter_by_rank(
+                latitude=float(kwargs.get("latitude")),
+                longitude=float(kwargs.get("longitude")),
+                rank=int(kwargs.get("rank")),
+            )
+        elif kwargs.get("distance"):
+            request = api.filter_by_distance(
+                latitude=float(kwargs.get("latitude")),
+                longitude=float(kwargs.get("longitude")),
+                distance=int(kwargs.get("distance")),
+            )
+    elif kwargs.get("left"):
+        request = stations.filter_by_bbox(
+            left=kwargs.get("left"),
+            bottom=kwargs.get("bottom"),
+            right=kwargs.get("right"),
+            top=kwargs.get("top"),
+        )
+
+    df = request.df
+
+    if kwargs.get("sql"):
+        # TODO: make own function in request class providing sql filtering
+        request = stations.all()
+
+        df = ExportMixin._filter_by_sql(request.df, kwargs.get("sql"))
+
+    if kwargs.get("target"):
+        ExportMixin.to_target(kwargs.get("target"))
+
+
+
+    return
+
+
+# @app.command("radar")
+def radar(
+    dwd: bool = False,
+    odim_code: str = False,
+    wmo_code: str = False,
+    country_name: str = False,
+):
+    if dwd:
+        data = DwdRadarSites().all()
+    else:
+        if odim_code:
+            data = OperaRadarSites().by_odimcode(odim_code)
+        elif wmo_code:
+            data = OperaRadarSites().by_wmocode(wmo_code)
+        elif country_name:
+            data = OperaRadarSites().by_countryname(country_name)
+        else:
+            data = OperaRadarSites().all()
+
+    output = json.dumps(data, indent=4)
+    print(output)
+    return
 
 
 def run():
@@ -442,3 +737,7 @@ def about(options: Munch):
         )
         output(["parameters", "resolutions", "periods", "coverage"])
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    wetterdienst()

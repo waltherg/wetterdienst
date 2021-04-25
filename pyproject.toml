@@ -135,6 +135,8 @@ measurement = "^3.2.0"
 rapidfuzz = "^1.4.1"
 Pint = "^0.17"
 aenum = "^3.0.0"
+click = "^7.1.2"
+cloup = "^0.7.0"
 
 
 [tool.poetry.dev-dependencies]
