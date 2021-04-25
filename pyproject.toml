@@ -135,6 +135,7 @@ measurement = "^3.2.0"
 rapidfuzz = "^1.4.1"
 Pint = "^0.17"
 aenum = "^3.0.0"
+fsspec = {git = "https://github.com/earthobservations/filesystem_spec", rev = "integration"}
 
 
 [tool.poetry.dev-dependencies]
@@ -162,6 +163,7 @@ pip-licenses = "^3.3.0"
 sphinx-autobuild = "^2020.9.1"
 selenium = "^3.141.0"
 percy = "^2.0.2"
+pytest-xdist = "^2.2.1"
 
 [tool.poetry.extras]
 ipython = ["ipython", "ipython-genutils", "matplotlib"]
@@ -245,6 +247,9 @@ isort = "isort wetterdienst example tests"
 format = ["black", "isort"]
 lint = "flakehell lint wetterdienst example tests"
 test = "pytest tests"
+test-parallel = "pytest --numprocesses=4 -m 'not explorer' tests"
+coverage = "pytest --cov=wetterdienst tests"
+coverage-parallel = "pytest --cov=wetterdienst --numprocesses=4 -m 'not explorer' tests"
 export_requirements = "dephell deps convert"
 export_licenses = "pip-licenses --from=mixed --format=plain-vertical --with-authors --with-urls --with-license-file --no-license-path --ignore-packages wetterdienst --output-file=THIRD_PARTY_NOTICES"
 export = ["export_requirements", "export_licenses"]

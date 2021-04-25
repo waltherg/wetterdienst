@@ -7,7 +7,11 @@ import h5py
 import pytest
 
 from tests.provider.dwd.radar import station_reference_pattern_unsorted
-from wetterdienst.provider.dwd.radar import DwdRadarParameter, DwdRadarValues
+from wetterdienst.provider.dwd.radar import (
+    DwdRadarParameter,
+    DwdRadarPeriod,
+    DwdRadarValues,
+)
 from wetterdienst.provider.dwd.radar.metadata import (
     DwdRadarDataFormat,
     DwdRadarDataSubset,
@@ -119,6 +123,7 @@ def test_radar_request_radolan_cdc_most_recent():
     request = DwdRadarValues(
         parameter=DwdRadarParameter.RADOLAN_CDC,
         resolution=DwdRadarResolution.DAILY,
+        period=DwdRadarPeriod.RECENT,
         start_date=DwdRadarDate.MOST_RECENT,
     )
 
