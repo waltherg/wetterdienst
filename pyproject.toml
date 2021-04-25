@@ -247,9 +247,9 @@ isort = "isort wetterdienst example tests"
 format = ["black", "isort"]
 lint = "flakehell lint wetterdienst example tests"
 test = "pytest tests"
-test-parallel = "pytest --numprocesses=4 -m 'not explorer' tests"
+test-parallel = "pytest --numprocesses=4 -m 'not (explorer or cflake)' tests"
 coverage = "pytest --cov=wetterdienst tests"
-coverage-parallel = "pytest --cov=wetterdienst --numprocesses=4 -m 'not explorer' tests"
+coverage-parallel = "pytest --cov=wetterdienst --numprocesses=4 -m 'not (explorer or cflake)' tests"
 export_requirements = "dephell deps convert"
 export_licenses = "pip-licenses --from=mixed --format=plain-vertical --with-authors --with-urls --with-license-file --no-license-path --ignore-packages wetterdienst --output-file=THIRD_PARTY_NOTICES"
 export = ["export_requirements", "export_licenses"]
@@ -260,6 +260,7 @@ markers = [
     "slow: Slow tests.",
     "sql: All tests related to SQL.",
     "explorer: All tests related to the explorer UI.",
+    "cflake: Tests which are flaky under concurrency",
 ]
 addopts = "-vvv --webdriver=Firefox --headless"
 
