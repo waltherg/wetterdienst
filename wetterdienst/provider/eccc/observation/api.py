@@ -50,11 +50,11 @@ class EcccObservationValues(ScalarValuesCore):
 
     _has_quality = True
 
-    _http = requests.Session()
-    _http.mount("http://", HTTPAdapter(max_retries=Retry(total=10, connect=5, read=5)))
+    _session = requests.Session()
+    _session.mount("https://", HTTPAdapter(max_retries=Retry(total=10, connect=5, read=5)))
 
     _base_url = (
-        "http://climate.weather.gc.ca/climate_data/bulk_data_e.html?"
+        "https://climate.weather.gc.ca/climate_data/bulk_data_e.html?"
         "format=csv&stationID={0}&timeframe={1}"
         "&submit= Download+Data"
     )
@@ -95,10 +95,14 @@ class EcccObservationValues(ScalarValuesCore):
         return hcnm
 
     @staticmethod
-    def _tidy_up_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-        """Tidy up dataframe pairwise by column
-        'DATE', 'Temp (°C)', 'Temp Flag', ...
+    def _tidy_up_df(df: pd.DataFrame) -> pd.DataFrame:
         """
+        Tidy up dataframe pairwise by column 'DATE', 'Temp (°C)', 'Temp Flag', ...
+
+        :param df:
+        :return:
+        """
+
         df_tidy = pd.DataFrame()
 
         columns = df.columns
@@ -107,26 +111,23 @@ class EcccObservationValues(ScalarValuesCore):
                 {
                     Columns.DATE.value: df[Columns.DATE.value],
                     Columns.VALUE.value: df[parameter_column],
-                    Columns.QUALITY.value: df[quality_column],
+                    Columns.QUALITY_PRIMARY.value: df[quality_column],
                 }
             )
             df_parameter[Columns.PARAMETER.value] = parameter_column
             df_tidy = df_tidy.append(df_parameter)
-
-        df_tidy = df_tidy.reindex(
-            columns=[
-                Columns.DATE.value,
-                Columns.PARAMETER.value,
-                Columns.VALUE.value,
-                Columns.QUALITY.value,
-            ]
-        )
 
         return df_tidy
 
     def _collect_station_parameter(
         self, station_id: str, parameter: Tuple[Enum, Enum]
     ) -> pd.DataFrame:
+        """
+
+        :param station_id:
+        :param parameter:
+        :return:
+        """
         parameter, dataset = parameter
         meta = self.stations.df[
             self.stations.df[Columns.STATION_ID.value] == station_id
@@ -201,11 +202,11 @@ class EcccObservationValues(ScalarValuesCore):
 
         df = df.drop(columns=["data quality"], errors="ignore")
 
-        if self.stations.stations.tidy:
-            df = self._tidy_up_dataframe(df)
-
-            if parameter not in self.stations.stations._dataset_base:
-                df = df[df[Columns.PARAMETER.value] == parameter.value]
+        # if self.stations.stations.tidy:
+        #     df = self._tidy_up_dataframe(df)
+        #
+        #     if parameter not in self.stations.stations._dataset_base:
+        #         df = df[df[Columns.PARAMETER.value] == parameter.value]
 
         df[Columns.STATION_ID.value] = station_id
 
@@ -214,12 +215,13 @@ class EcccObservationValues(ScalarValuesCore):
     def _create_file_urls(
         self, station_id: str, start_year: int, end_year: int
     ) -> Generator[str, None, None]:
-        # TODO: make faster, requests per month take too long!
-        # if self.stations.stations.resolution != Resolution.HOURLY:
-        #     url = self._base_url.format(int(station_id), self._timeframe)
-        #
-        #     yield url
-        # else:
+        """
+
+        :param station_id:
+        :param start_year:
+        :param end_year:
+        :return:
+        """
         resolution = self.stations.stations.resolution
 
         freq = "Y"

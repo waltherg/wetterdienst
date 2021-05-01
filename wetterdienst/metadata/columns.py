@@ -29,8 +29,10 @@ class Columns(Enum):
     PARAMETER = "parameter"
     DATASET = "dataset"
     VALUE = "value"
-    # Column for quality
-    QUALITY = "quality"
+    # Columns for quality
+    QUALITY_PRIMARY = "quality_primary"
+    QUALITY_SECONDARY = "quality_secondary"
+    # QUALITY_TERTIARY = "quality_tertiary"  # for later
     # Columns used for RADOLAN
     PERIOD_TYPE = "period_type"
     DATETIME = "datetime"

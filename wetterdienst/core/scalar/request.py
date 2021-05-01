@@ -33,21 +33,21 @@ EARTH_RADIUS_KM = 6371
 class ScalarRequestCore(Core):
     """ Core for stations information of a source """
 
-    @property
-    def resolution(self) -> Optional[Resolution]:
-        """ Resolution accessor"""
-        return self._resolution
-
-    @resolution.setter
-    def resolution(self, res) -> None:
-        # TODO: add functionality to parse arbitrary resolutions for cases where
-        #  resolution has to be determined based on returned data
-        if self._resolution_type in (ResolutionType.FIXED, ResolutionType.UNDEFINED):
-            self._resolution = res
-        else:
-            self._resolution = parse_enumeration_from_template(
-                res, self._resolution_base, Resolution
-            )
+    # @property
+    # def resolution(self) -> Optional[Resolution]:
+    #     """ Resolution accessor"""
+    #     return self._resolution
+    #
+    # @resolution.setter
+    # def resolution(self, res) -> None:
+    #     # TODO: add functionality to parse arbitrary resolutions for cases where
+    #     #  resolution has to be determined based on returned data
+    #     if self._resolution_type in (ResolutionType.FIXED, ResolutionType.UNDEFINED):
+    #         self._resolution = res
+    #     else:
+    #         self._resolution = parse_enumeration_from_template(
+    #             res, self._resolution_base, Resolution
+    #         )
 
     @property
     @abstractmethod
@@ -269,9 +269,14 @@ class ScalarRequestCore(Core):
 
     @staticmethod
     def _parse_station_id(series: pd.Series) -> pd.Series:
-        """Dedicated method for parsing station ids, by default uses the same method as
-        parse_strings but could be modified by the implementation class"""
-        return series.astype(pd.StringDtype())
+        """
+        Dedicated method for parsing station ids, by default uses the same method as
+        parse_strings but could be modified by the implementation class
+
+        :param series:
+        :return:
+        """
+        return series.astype(str)
 
     def __eq__(self, other) -> bool:
         """ Equal method of request object """
@@ -310,7 +315,7 @@ class ScalarRequestCore(Core):
 
         super().__init__()
 
-        self.resolution = resolution
+        self.resolution = parse_enumeration_from_template(resolution, self._resolution_base, Resolution)
         self.period = self._parse_period(period)
 
         self.start_date, self.end_date = self.convert_timestamps(start_date, end_date)

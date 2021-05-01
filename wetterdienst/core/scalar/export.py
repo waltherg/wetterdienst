@@ -298,7 +298,7 @@ class ExportMixin:
             tag_columns = []
             tag_candidates = [
                 Columns.STATION_ID.value,
-                Columns.QUALITY.value,
+                Columns.QUALITY_PRIMARY.value,
                 Columns.QUALITY_PREFIX.value,
                 Columns.DATASET.value,
                 Columns.PARAMETER.value,

@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import pandas as pd
 
 from wetterdienst.core.process import tidy_up_data
@@ -123,12 +124,10 @@ class DwdObservationValues(ScalarValuesCore):
         collection and storing of data, transformation and combination of different
         periods.
 
-        Args:
-            station_id: station id for which parameter is collected
-            parameter: chosen parameter-dataset combination that is collected
+        :param station_id: station id for which parameter is collected
+        :param parameter: chosen parameter-dataset combination that is collected
 
-        Returns:
-            pandas.DataFrame for given parameter of station
+        :return: pandas.DataFrame for given parameter of station
         """
         parameter, dataset = parameter
 
@@ -203,22 +202,92 @@ class DwdObservationValues(ScalarValuesCore):
 
             parameter_df = parameter_df.append(period_df)
 
-        if self.stations.tidy:
-            parameter_df = tidy_up_data(parameter_df)
-
-            # TODO: remove this column and rather move it into metadata of resulting
-            #  data model
-            parameter_df.insert(2, Columns.DATASET.value, dataset.name.lower())
-            parameter_df[Columns.DATASET.value] = parameter_df[
-                Columns.DATASET.value
-            ].astype("category")
-
-        if parameter not in DwdObservationDataset:
-            parameter_df = parameter_df[
-                parameter_df[DwdColumns.PARAMETER.value] == parameter.value.lower()
-            ]
-
         return parameter_df
+
+    def _tidy_up_df(self, df: pd.DataFrame, dataset) -> pd.DataFrame:
+        """
+        Implementation of _tidy_up_df for DWD Observations
+
+        :param df:
+        :param dataset:
+        :return:
+        """
+        resolution = self.stations.stations.resolution
+
+        possible_id_vars = (
+            Columns.STATION_ID.value,
+            Columns.DATE.value,
+            Columns.FROM_DATE.value,
+            Columns.TO_DATE.value,
+        )
+
+        id_vars = df.columns.intersection(possible_id_vars)
+
+        if resolution == Resolution.MINUTE_1 and dataset == DwdObservationDatasetTree.MINUTE_1.PRECIPITATION:
+            precipitation_dataset = DwdObservationDatasetTree.MINUTE_1.PRECIPITATION
+
+            # Repeat both qualities three times for three precipitation parameters
+            quality_primary = df.pop(precipitation_dataset.QUALITY.value).repeat(3)
+            quality_secondary = df.pop(precipitation_dataset.PRECIPITATION_FORM.value).repeat(3)
+        elif resolution == Resolution.MINUTE_10 and dataset == DwdObservationDatasetTree.MINUTE_10.PRECIPITATION:
+            precipitation_dataset = DwdObservationDatasetTree.MINUTE_10.PRECIPITATION
+
+            quality_primary = df.pop(precipitation_dataset.QUALITY.value).repeat(3)
+            quality_secondary = df.pop(precipitation_dataset.PRECIPITATION_INDICATOR_WR.value).repeat(3)
+        elif resolution == Resolution.HOURLY and dataset == DwdObservationDatasetTree.HOURLY.CLOUD_TYPE:
+            quality_primary = df.pop(
+                DwdObservationDatasetTree.HOURLY.CLOUD_TYPE.QUALITY.value
+            )
+
+            quality_secondary = df.pop(
+                DwdObservationDatasetTree.HOURLY.CLOUD_TYPE.CLOUD_COVER_TOTAL_INDICATOR.value
+            )
+
+            for column
+
+            quality_secondary = pd.Series(dtype=float)
+            quality_tertiary = pd.Series(dtype=float)
+
+            column_quality_primary = pd.Series(dtype=float)
+            column_quality_secondary = pd.Series(dtype=float)
+
+            for column in df:
+                # If is quality column, overwrite current "column quality"
+                if column.startswith(Columns.QUALITY_PREFIX.value):
+                    column_quality_primary = df.pop(column).astype(float)
+                else:
+                    quality_primary = quality_primary.append(column_quality_primary)
+
+        else:
+            # Extract quality
+            # Set empty quality for first Columns until first QN column
+            quality_primary = pd.Series(dtype=float)
+            quality_secondary = pd.Series(dtype=float)
+
+            column_quality_primary = pd.Series(dtype=float)
+            column_quality_secondary = pd.Series(dtype=float)
+
+            for column in df:
+                # If is quality column, overwrite current "column quality"
+                if column.startswith(Columns.QUALITY_PREFIX.value):
+                    column_quality_primary = df.pop(column).astype(float)
+                else:
+                    quality_primary = quality_primary.append(column_quality_primary)
+
+        df_tidy = df.melt(
+            id_vars=id_vars,
+            var_name=Columns.PARAMETER.value,
+            value_name=Columns.VALUE.value,
+        )
+
+        df_tidy[Columns.QUALITY_PRIMARY.value] = quality_primary.reset_index(drop=True)
+
+        df_tidy.loc[df_tidy[Columns.VALUE.value].isna(), Columns.QUALITY_PRIMARY.value] = np.NaN
+
+        # Store metadata information within dataframe.
+        # df_tidy.attrs["tidy"] = True
+
+        return df_tidy
 
     def _coerce_dates(self, series: pd.Series) -> pd.Series:
         """Use predefined datetime format for given resolution to reduce processing
@@ -454,7 +523,6 @@ class DwdObservationRequest(ScalarRequestCore):
             # First "now" period as it has more updated end date up to the last "now"
             # values
             for period in reversed(self.period):
-                # TODO: move to _all and replace error with logging + empty dataframe
                 if not check_dwd_observations_dataset(dataset, self.resolution, period):
                     log.warning(
                         f"The combination of {dataset.value}, "

@@ -71,9 +71,9 @@ class DwdMosmixValues(ScalarValuesCore):
     _data_tz = Timezone.UTC
     _has_quality = False
 
-    @property
-    def _tidy(self) -> bool:
-        return self.stations.tidy
+    # @property
+    # def _tidy(self) -> bool:
+    #     return self.stations.tidy
 
     _irregular_parameters = tuple()
     _integer_parameters = INTEGER_PARAMETERS
@@ -124,6 +124,9 @@ class DwdMosmixValues(ScalarValuesCore):
             forecast_df = self._coerce_meta_fields(forecast_df)
             forecast_df = self._coerce_parameter_types(forecast_df)
 
+            if self.stations.stations.tidy:
+                forecast_df = self._tidy_up_df(forecast_df)
+
             if self.stations.humanize:
                 forecast_df = self._humanize(forecast_df)
 
@@ -137,7 +140,7 @@ class DwdMosmixValues(ScalarValuesCore):
         if self.stations.start_issue == DwdForecastDate.LATEST:
             df = next(self.read_mosmix(self.stations.stations.start_issue))
 
-            df[Columns.QUALITY.value] = pd.NA
+            df[Columns.QUALITY_PRIMARY.value] = pd.NA
 
             yield df
         else:
@@ -149,12 +152,24 @@ class DwdMosmixValues(ScalarValuesCore):
                 try:
                     df = next(self.read_mosmix(date))
 
-                    df[Columns.QUALITY.value] = pd.NA
+                    df[Columns.QUALITY_PRIMARY.value] = pd.NA
 
                     yield df
                 except IndexError as e:
                     log.warning(e)
                     continue
+
+    def _tidy_up_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        df_tidy = df.melt(
+            id_vars=[
+                DwdColumns.STATION_ID.value,
+                DwdColumns.DATE.value,
+            ],
+            var_name=DwdColumns.PARAMETER.value,
+            value_name=DwdColumns.VALUE.value,
+        )
+
+        return df_tidy
 
     def read_mosmix(
         self, date: Union[datetime, DwdForecastDate]
@@ -173,16 +188,6 @@ class DwdMosmixValues(ScalarValuesCore):
                     "datetime": DwdColumns.DATE.value,
                 }
             )
-
-            if self.stations.tidy:
-                df_forecast = df_forecast.melt(
-                    id_vars=[
-                        DwdColumns.STATION_ID.value,
-                        DwdColumns.DATE.value,
-                    ],
-                    var_name=DwdColumns.PARAMETER.value,
-                    value_name=DwdColumns.VALUE.value,
-                )
 
             yield df_forecast
 
