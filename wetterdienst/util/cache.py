@@ -13,7 +13,7 @@ log = logging.getLogger()
 # Python on Windows has no "fcntl", which is required by the dbm backend.
 # TODO: Make backend configurable, e.g. better use Redis.
 platform = platform.system()
-backend = "dogpile.cache.dbm"
+backend = "dogpile.cache.null"
 if platform == "Windows":
     backend = "dogpile.cache.memory"
 
